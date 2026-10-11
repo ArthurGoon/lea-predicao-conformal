@@ -6,3 +6,4 @@
 *_files/
 *.Rproj
 .DS_Store
+Rplots.pdf
