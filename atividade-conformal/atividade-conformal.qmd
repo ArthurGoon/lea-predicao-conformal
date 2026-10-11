@@ -20,26 +20,41 @@ format:
     code-copy: true
     embed-resources: true
     theme: cosmo
-    title-block-banner: "#002F6C"
-    title-block-banner-color: "#ffffff"
-    fig-align: center
-    fig-dpi: 150
-    smooth-scroll: true
+    callout-icon: false
     include-in-header:
       text: |
         <style>
-        :root { --azul: #0067B1; --azul-esc: #002F6C; --cinza: #f5f7fa; }
-        body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.65; }
-        #title-block-header .subtitle { opacity: .85; }
-        h1 { color: var(--azul-esc); border-bottom: 2px solid #e3e8ef; padding-bottom: .3rem; margin-top: 2.5rem; }
-        .resposta { background: var(--cinza); border-left: 4px solid var(--azul); border-radius: 6px;
-                    padding: .9rem 1.2rem .3rem; margin: 1rem 0 1.6rem; }
-        .resposta > p:first-child strong:first-child { color: var(--azul-esc); }
-        table { font-size: .92rem; }
-        thead th { background: var(--azul-esc); color: #fff; }
-        tbody tr:nth-child(even) { background: #f8fafc; }
+        body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #111; line-height: 1.65; }
+        a { color: #111; text-decoration: underline; text-underline-offset: 2px; }
+        #title-block-header { border-bottom: 1px solid #111; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        h1.title { font-weight: 600; letter-spacing: -.01em; }
+        .subtitle { color: #555; }
+        .quarto-title-meta-heading { color: #777; letter-spacing: .06em; }
+        h1, h2 { color: #111; font-weight: 600; }
+        h1 { border-bottom: 1px solid #ddd; padding-bottom: .3rem; margin-top: 2.8rem; }
+        .header-section-number { color: #999; font-weight: 400; }
+        /* callouts neutros: sem barra colorida, sem fundo */
+        div.callout { border: 1px solid #111 !important; border-left-width: 1px !important; border-radius: 0 !important; box-shadow: none !important; }
+        div.callout .callout-header { background: #fff !important; border-bottom: 1px solid #ddd; }
+        div.callout .callout-title-container { color: #111 !important; font-weight: 600; text-transform: uppercase; font-size: .8rem; letter-spacing: .08em; }
+        div.callout .callout-toggle::before { filter: grayscale(1); }
+        /* blocos de resposta */
+        .resposta { border-top: 1px solid #111; padding-top: .8rem; margin: 1.2rem 0 2rem; }
+        /* tabelas estilo booktabs */
+        table { font-size: .92rem; border-top: 1.5px solid #111 !important; border-bottom: 1.5px solid #111 !important; }
+        thead th { background: none !important; color: #111 !important; border-bottom: 1px solid #111 !important; font-weight: 600; }
+        tbody tr, tbody tr:nth-child(even), .table-striped > tbody > tr:nth-of-type(odd) > * { background: none !important; --bs-table-accent-bg: transparent; }
+        td, th { border-top: none !important; }
+        .table > :not(caption) > * > * { box-shadow: none !important; background: none !important; }
+        h1.title { border-bottom: none !important; }
         .resumo td:first-child { white-space: nowrap; font-weight: 600; }
-        details.code-fold summary { color: var(--azul); }
+        /* sumario e codigo */
+        #TOC .nav-link.active, #TOC .nav-link:hover { color: #111 !important; border-left-color: #111 !important; }
+        #TOC .nav-link { color: #777; }
+        details.code-fold summary { color: #777; font-size: .85rem; }
+        .quarto-title-block .code-tools-button { color: #555; }
+        div.sourceCode, pre.sourceCode { background: #f7f7f7 !important; border: none; border-radius: 0; }
+        code { color: #111; background: #f2f2f2; }
         </style>
 execute:
   echo: true
@@ -633,14 +648,14 @@ ggplot(cob_sub_norm, aes(x = subgrupo, y = cobertura, fill = metodo)) +
   geom_col(position = position_dodge(width = 0.85), width = 0.8) +
   geom_hline(yintercept = 1 - alpha, linetype = 2, color = "#B42828") +
   coord_cartesian(ylim = c(0.5, 1)) +
-  scale_fill_manual(values = c("grey60", "#002F6C", "#0067B1", "#E69F00")) +
+  scale_fill_manual(values = c("grey75", "#002F6C", "#0067B1", "grey15")) +
   labs(x = cfg$nome_sub, y = "Cobertura média", fill = NULL) +
   theme_bw() +
   theme(legend.position = "bottom")
 
 ggplot(cob_sub_norm, aes(x = subgrupo, y = comprimento, fill = metodo)) +
   geom_col(position = position_dodge(width = 0.85), width = 0.8) +
-  scale_fill_manual(values = c("grey60", "#002F6C", "#0067B1", "#E69F00")) +
+  scale_fill_manual(values = c("grey75", "#002F6C", "#0067B1", "grey15")) +
   labs(x = cfg$nome_sub, y = "Comprimento médio do intervalo", fill = NULL) +
   theme_bw() +
   theme(legend.position = "bottom")
@@ -735,7 +750,7 @@ ggplot(cob_mond, aes(x = subgrupo, y = cobertura, fill = metodo)) +
   geom_text(aes(label = sprintf("%.0f", comprimento), y = 0.52),
             position = position_dodge(width = 0.8), size = 3, color = "white") +
   coord_cartesian(ylim = c(0.5, 1)) +
-  scale_fill_manual(values = c("#0067B1", "#E69F00")) +
+  scale_fill_manual(values = c("grey60", "grey15")) +
   labs(x = cfg$nome_sub, y = "Cobertura média", fill = NULL,
        caption = "Números na base das barras: comprimento médio do intervalo (bicicletas).") +
   theme_bw() +
