@@ -1,0 +1,759 @@
+---
+title: "Atividade em grupo — Predição conformal"
+subtitle: "Laboratório de Estatística Aplicada — DEs/UFSCar"
+author:
+  - "Arthur Gon (RA 811464)"
+  - "Isabela Viana (RA 811753)"
+date: today
+date-format: "DD/MM/YYYY"
+lang: pt
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    toc-title: "Sumário"
+    number-sections: true
+    code-fold: true
+    code-summary: "Código"
+    code-tools: true
+    code-copy: true
+    embed-resources: true
+    theme: cosmo
+    title-block-banner: "#002F6C"
+    title-block-banner-color: "#ffffff"
+    fig-align: center
+    fig-dpi: 150
+    smooth-scroll: true
+    include-in-header:
+      text: |
+        <style>
+        :root { --azul: #0067B1; --azul-esc: #002F6C; --cinza: #f5f7fa; }
+        body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.65; }
+        #title-block-header .subtitle { opacity: .85; }
+        h1 { color: var(--azul-esc); border-bottom: 2px solid #e3e8ef; padding-bottom: .3rem; margin-top: 2.5rem; }
+        .resposta { background: var(--cinza); border-left: 4px solid var(--azul); border-radius: 6px;
+                    padding: .9rem 1.2rem .3rem; margin: 1rem 0 1.6rem; }
+        .resposta > p:first-child strong:first-child { color: var(--azul-esc); }
+        table { font-size: .92rem; }
+        thead th { background: var(--azul-esc); color: #fff; }
+        tbody tr:nth-child(even) { background: #f8fafc; }
+        .resumo td:first-child { white-space: nowrap; font-weight: 600; }
+        details.code-fold summary { color: var(--azul); }
+        </style>
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+::: {.callout-note collapse="true"}
+## Instruções
+
+- **Prazo:** 23/10/2026, por e-mail.
+- **Entrega:** este arquivo `.qmd` preenchido **e** o `.html` gerado por ele (botão *Render* no RStudio).
+- O código já está pronto. O trabalho do grupo é **preencher os RAs** dos integrantes na Seção 1 (a base de dados é definida automaticamente a partir deles), **rodar** tudo e **responder** às tarefas nos blocos marcados com **Resposta**.
+- Respostas curtas e diretas (2 a 5 frases por item), sempre **no contexto dos dados** do grupo.
+- Pacotes necessários: `ISLR2`, `ranger`, `dplyr`, `tidyr`, `ggplot2`. Se faltar algum, rode uma vez no console `install.packages(c("ISLR2", "ranger", "dplyr", "tidyr", "ggplot2"))`.
+- A Seção 7 é **opcional** e vale ponto extra.
+:::
+
+::: {.callout-tip appearance="simple"}
+## Resumo do grupo
+
+**Base 2: Bikeshare** (RAs 811464 + 811753), com a resposta `bikers` (bicicletas alugadas por hora em Washington, D.C.) e intervalos de 90%.
+
+::: {.resumo}
+| | Principal resultado |
+|---|---|
+| Dados | Resposta assimétrica e muito heteroscedástica: DP de 24 na madrugada contra 150 no pico (16-19h). |
+| Experimento | Os três métodos têm cobertura de ~89-90%; o Conformal (floresta) gera intervalos ~30% mais curtos que o Conformal (lm). |
+| 50 repetições | Cobertura média conformal de ~90%, como prevê a teoria; o clássico fica quase sempre um pouco abaixo (~89%). |
+| Subgrupos | A garantia é só marginal: ~100% na madrugada e ~77% no pico. |
+| Seção 7 (opcional) | O escore normalizado reduz o comprimento médio em ~24% e melhora o pico (76% → 82%). |
+| Seção 8 (extra) | Mondrian CP: ~90% em **todas** as faixas, com intervalos mais curtos em média que os da calibração global. |
+
+: {tbl-colwidths="[22,78]"}
+:::
+
+As respostas estão nos blocos destacados **Resposta**. O código dos experimentos pode ser expandido em "Código" (ou todo de uma vez no botão **Código**, no topo da página).
+:::
+
+# Configuração
+
+```{r}
+#| label: pacotes
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ranger)
+```
+
+Cada grupo trabalha com uma das quatro bases, definida pelos RAs dos integrantes:
+$$
+\text{base} = \Big(\textstyle\sum_{j} \text{RA}_j\Big) \bmod 4 + 1.
+$$
+Altere **apenas** a linha `RAs <- ...` abaixo, com os RAs de **todos** os integrantes (se o grupo for uma dupla, apague um `NA`; se for individual, deixe só o seu RA).
+
+```{r}
+#| label: grupo
+#| code-fold: show
+RAs <- c(811464, 811753)   # Arthur Gon, Isabela Viana
+
+if (anyNA(RAs)) stop("Preencha os RAs dos integrantes no chunk 'grupo'.")
+GRUPO <- sum(as.numeric(RAs)) %% 4 + 1
+```
+
+```{r}
+#| label: configuracao
+#| code-fold: true
+# Cada grupo trabalha com uma base diferente. Para cada uma definimos:
+#   resposta : variável a ser predita
+#   excluir  : variáveis que NÃO podem entrar como covariáveis
+#   subgrupo : partição usada na Seção 6 (cobertura por subgrupo)
+configs <- list(
+  "1" = list(
+    descricao = "Salário anual (em milhares de US$) de trabalhadores homens da região do Atlântico Médio (EUA)",
+    carregar  = function() ISLR2::Wage,
+    resposta  = "wage",
+    excluir   = c("logwage", "region"),
+    subgrupo  = function(d) d$education,
+    nome_sub  = "Escolaridade"
+  ),
+  "2" = list(
+    descricao = "Número de bicicletas alugadas por hora em Washington, D.C.",
+    carregar  = function() {
+      d <- ISLR2::Bikeshare
+      # a categoria "heavy rain/snow" tem uma única observação: juntamos com "light rain/snow"
+      levels(d$weathersit)[levels(d$weathersit) == "heavy rain/snow"] <- "light rain/snow"
+      d
+    },
+    resposta  = "bikers",
+    excluir   = c("casual", "registered"),
+    subgrupo  = function(d) {
+      h <- as.numeric(as.character(d$hr))
+      cut(h, breaks = c(-1, 5, 15, 19, 23),
+          labels = c("madrugada (0-5h)", "dia (6-15h)", "pico (16-19h)", "noite (20-23h)"))
+    },
+    nome_sub  = "Faixa horária"
+  ),
+  "3" = list(
+    descricao = "Número de candidatos (inscrições) recebidos por universidades dos EUA",
+    carregar  = function() ISLR2::College,
+    resposta  = "Apps",
+    excluir   = c("Accept", "Enroll"),
+    subgrupo  = function(d) factor(d$Private, levels = c("No", "Yes"),
+                                  labels = c("Pública", "Privada")),
+    nome_sub  = "Tipo de instituição"
+  ),
+  "4" = list(
+    descricao = "Preço (em US$) de diamantes (amostra de 5000 diamantes)",
+    carregar  = function() {
+      set.seed(2026)
+      d <- as.data.frame(ggplot2::diamonds)
+      d <- d[sample(nrow(d), 5000), ]
+      # fatores ordenados viram fatores comuns (facilita a leitura do lm)
+      d$cut <- factor(d$cut, ordered = FALSE)
+      d$color <- factor(d$color, ordered = FALSE)
+      d$clarity <- factor(d$clarity, ordered = FALSE)
+      d
+    },
+    resposta  = "price",
+    excluir   = character(0),
+    subgrupo  = function(d) cut(d$carat, breaks = c(0, 0.5, 1, Inf), right = FALSE,
+                                labels = c("< 0,5 quilate", "0,5 a 1 quilate", ">= 1 quilate")),
+    nome_sub  = "Tamanho (quilates)"
+  )
+)
+
+cfg <- configs[[as.character(GRUPO)]]
+
+bruto <- as.data.frame(cfg$carregar())
+
+# Base de modelagem: resposta (renomeada para y) + covariáveis permitidas
+covariaveis <- setdiff(names(bruto), c(cfg$resposta, cfg$excluir))
+dados <- data.frame(y = bruto[[cfg$resposta]], bruto[, covariaveis])
+
+# Subgrupo de cada observação (NÃO entra no modelo, serve só para avaliar)
+subgrupo <- cfg$subgrupo(bruto)
+
+# Nível de descobertura: intervalos de 90%
+alpha <- 0.10
+```
+
+**RAs:** `r paste(RAs, collapse = ", ")` → (soma) mod 4 + 1 = **base `r GRUPO`**.
+
+**Base `r GRUPO`:** `r cfg$descricao`. São `r nrow(dados)` observações; a resposta é `r cfg$resposta` e as covariáveis usadas são: `r paste(covariaveis, collapse = ", ")`.
+
+## Funções auxiliares
+
+As funções abaixo implementam o que vimos em aula. **Leia** cada uma antes de seguir; não é preciso alterá-las.
+
+```{r}
+#| label: funcoes
+#| code-fold: true
+
+# Separa os índices 1..n em treino / calibração / teste (conjuntos disjuntos)
+dividir_dados <- function(n, props = c(treino = 0.4, calib = 0.3, teste = 0.3)) {
+  idx <- sample(seq_len(n))
+  n_tr <- floor(props[1] * n)
+  n_ca <- floor(props[2] * n)
+  list(treino = idx[1:n_tr],
+       calib  = idx[(n_tr + 1):(n_tr + n_ca)],
+       teste  = idx[(n_tr + n_ca + 1):n])
+}
+
+# Quantil conformal: R_(k), com k = ceiling((1 - alpha) * (n + 1))
+quantil_conformal <- function(escores, alpha) {
+  n <- length(escores)
+  k <- ceiling((1 - alpha) * (n + 1))
+  if (k > n) return(Inf)          # calibração pequena demais para esse alpha
+  sort(escores)[k]
+}
+
+# Cobertura empírica e comprimento médio de um conjunto de intervalos
+avaliar <- function(y, inf, sup) {
+  c(cobertura = mean(y >= inf & y <= sup),
+    comprimento = mean(sup - inf))
+}
+
+# Gráfico dos intervalos para (no máximo) 100 observações de teste,
+# ordenadas pelo valor predito
+grafico_intervalos <- function(y, y_hat, inf, sup, titulo, max_n = 100) {
+  m <- avaliar(y, inf, sup)
+  tibble(y, y_hat, inf, sup) |>
+    slice_head(n = max_n) |>
+    arrange(y_hat) |>
+    mutate(ordem = row_number(),
+           dentro = ifelse(y >= inf & y <= sup, "dentro", "fora")) |>
+    ggplot(aes(x = ordem)) +
+    geom_errorbar(aes(ymin = inf, ymax = sup), color = "grey55", width = 0) +
+    geom_point(aes(y = y_hat), color = "#0067B1", size = 1) +
+    geom_point(aes(y = y, color = dentro), size = 1.2) +
+    scale_color_manual(values = c(dentro = "black", fora = "#B42828")) +
+    labs(x = "observações de teste (ordenadas pela predição)", y = cfg$resposta,
+         color = "Valor observado", title = titulo,
+         caption = "Pontos azuis: valor predito. Barras cinza: intervalo de predição.",
+         subtitle = sprintf("Cobertura empírica = %.1f%%  |  Comprimento médio = %.1f",
+                            100 * m["cobertura"], m["comprimento"])) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+}
+
+# Um experimento completo: divide, ajusta os modelos e devolve os intervalos
+# dos três métodos para o conjunto de teste
+experimento <- function(dados, alpha) {
+  sp <- dividir_dados(nrow(dados))
+  tr <- dados[sp$treino, ]; ca <- dados[sp$calib, ]; te <- dados[sp$teste, ]
+
+  lin <- lm(y ~ ., data = tr)
+  rf  <- ranger(y ~ ., data = tr, num.trees = 200)
+
+  # (a) intervalo clássico da regressão linear
+  cl <- predict(lin, newdata = te, interval = "prediction", level = 1 - alpha)
+
+  # (b) split conformal com regressão linear
+  r_lin  <- quantil_conformal(abs(ca$y - predict(lin, newdata = ca)), alpha)
+  yh_lin <- predict(lin, newdata = te)
+
+  # (c) split conformal com floresta aleatória
+  r_rf  <- quantil_conformal(abs(ca$y - predict(rf, data = ca)$predictions), alpha)
+  yh_rf <- predict(rf, data = te)$predictions
+
+  bind_rows(
+    tibble(id = sp$teste, y = te$y, metodo = "Clássico (lm)",
+           inf = cl[, "lwr"], sup = cl[, "upr"]),
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal (lm)",
+           inf = yh_lin - r_lin, sup = yh_lin + r_lin),
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal (floresta)",
+           inf = yh_rf - r_rf, sup = yh_rf + r_rf)
+  )
+}
+```
+
+# Exploração dos dados
+
+```{r}
+#| label: exploracao
+#| fig-height: 3.5
+ggplot(dados, aes(x = y)) +
+  geom_histogram(bins = 40, fill = "#0067B1", color = "white") +
+  labs(x = cfg$resposta, y = "Frequência") +
+  theme_bw()
+
+tibble(y = dados$y, subgrupo = subgrupo) |>
+  ggplot(aes(x = subgrupo, y = y)) +
+  geom_boxplot(fill = "#0067B1", alpha = 0.3) +
+  labs(x = cfg$nome_sub, y = cfg$resposta) +
+  theme_bw()
+
+tibble(y = dados$y, subgrupo = subgrupo) |>
+  group_by(subgrupo) |>
+  summarise(n = n(), media = mean(y), desvio_padrao = sd(y)) |>
+  knitr::kable(digits = 1, col.names = c(cfg$nome_sub, "n", "Média", "Desvio-padrão"))
+```
+
+::: {.callout-important}
+## Tarefa 1
+
+(a) Descreva a distribuição da resposta: é simétrica? Há valores extremos?
+
+(b) A variabilidade da resposta é parecida entre os subgrupos? Qual subgrupo é o mais variável?
+
+(c) As variáveis listadas em `excluir` na configuração do seu grupo foram retiradas das covariáveis. Por que seria um erro usá-las para predizer a resposta?
+:::
+
+::: {.resposta}
+**Resposta:**
+
+(a) A distribuição do número de bicicletas alugadas por hora é claramente assimétrica à direita: a mediana é 109 e a média é 144, com muitas horas de demanda quase nula (653 horas com no máximo 5 aluguéis) e uma cauda longa até 651 bicicletas/hora. Não há valores impossíveis, mas os valores acima de 450 (cerca de 4% das horas, concentrados às 17h-18h e às 8h, os horários de ida e volta do trabalho) são extremos em relação ao restante. Como é uma contagem, a resposta é limitada inferiormente por zero, o que reforça a assimetria.
+
+(b) Não: a variabilidade muda muito entre as faixas horárias e cresce junto com a média. O desvio-padrão vai de 24 bicicletas na madrugada (0-5h) a 77 à noite, 115 durante o dia e 150 no horário de pico (16-19h), que é o subgrupo mais variável. Ou seja, a dispersão no pico é cerca de seis vezes a da madrugada.
+
+(c) As variáveis `casual` e `registered` são o número de aluguéis de usuários avulsos e de usuários cadastrados, e a resposta é exatamente a soma delas (`bikers = casual + registered`). Usá-las seria vazamento de informação (*data leakage*): o modelo "preveria" a resposta com erro praticamente zero, mas elas só são conhecidas depois que a hora termina, justamente quando já sabemos o total. Os intervalos resultantes seriam artificialmente curtos e inúteis para prever a demanda de uma hora futura.
+:::
+
+# Um experimento: clássico vs. conformal
+
+Separamos os dados em treino (40%), calibração (30%) e teste (30%), e construímos intervalos de 90% de três formas:
+
+- **Clássico (lm):** intervalo de predição da regressão linear, que supõe erros normais, independentes e com variância constante;
+- **Conformal (lm):** split conformal com escore $R_i = |Y_i - \hat\mu(X_i)|$ e $\hat\mu$ = regressão linear;
+- **Conformal (floresta):** o mesmo, com $\hat\mu$ = floresta aleatória.
+
+```{r}
+#| label: um-experimento
+set.seed(123)
+res <- experimento(dados, alpha)
+
+res |>
+  group_by(metodo) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf)) |>
+  knitr::kable(digits = 3, col.names = c("Método", "Cobertura empírica", "Comprimento médio"))
+```
+
+```{r}
+#| label: graficos-um-experimento
+#| fig-height: 4
+for (m in unique(res$metodo)) {
+  r <- filter(res, metodo == m)
+  yh <- (r$inf + r$sup) / 2   # centro do intervalo = valor predito
+  print(grafico_intervalos(r$y, yh, r$inf, r$sup, titulo = m))
+}
+```
+
+Para avaliar as suposições do intervalo clássico, olhamos os resíduos da regressão linear no treino:
+
+```{r}
+#| label: residuos
+#| fig-height: 3.5
+set.seed(123)
+sp  <- dividir_dados(nrow(dados))
+lin <- lm(y ~ ., data = dados[sp$treino, ])
+tibble(ajustado = fitted(lin), residuo = resid(lin)) |>
+  ggplot(aes(ajustado, residuo)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, linetype = 2, color = "#B42828") +
+  labs(x = "Valor ajustado", y = "Resíduo") +
+  theme_bw()
+```
+
+::: {.callout-important}
+## Tarefa 2
+
+(a) Qual método ficou mais próximo da cobertura nominal de 90%? Algum ficou claramente abaixo ou acima?
+
+(b) Pelo gráfico de resíduos, as suposições do intervalo clássico parecem razoáveis? Qual delas parece mais violada?
+
+(c) Compare os comprimentos médios de "Conformal (lm)" e "Conformal (floresta)". Qual produziu intervalos mais curtos? O que isso indica sobre a qualidade preditiva de cada modelo, já que ambos têm a mesma garantia de cobertura?
+:::
+
+::: {.resposta}
+**Resposta:**
+
+(a) O mais próximo da cobertura nominal foi o **Conformal (lm)**, com 89,7%; o Clássico (lm) teve 89,1% e o Conformal (floresta), 89,0%. Nenhum ficou claramente acima ou abaixo de 90%: com cerca de 2.600 horas no teste, só o erro amostral da proporção já é de ~0,6 ponto percentual, então diferenças de um ponto são compatíveis com o acaso de uma única divisão. Por isso a Seção 5 repete o experimento antes de tirarmos conclusões.
+
+(b) Não. A suposição mais violada é a **homoscedasticidade**: os resíduos formam um "funil" claro, e o desvio-padrão deles vai de ~35 nos menores valores ajustados a ~115 nos maiores. A **linearidade** também falha: para valores ajustados negativos, todos os resíduos são positivos, ou seja, o modelo erra sistematicamente para baixo onde prevê "menos de zero bicicletas". O corte em diagonal na parte de baixo do gráfico vem de $Y \geq 0$ (o resíduo nunca fica abaixo de $-\hat y$), o que também torna os erros assimétricos, e não normais. Na prática, cerca de 46% dos intervalos clássicos têm limite inferior negativo, o que não faz sentido para uma contagem.
+
+(c) O Conformal (floresta) produziu intervalos bem mais curtos (comprimento médio de ~180 bicicletas, contra ~256 do Conformal (lm)), cerca de 30% menores. Como os dois têm a mesma garantia de cobertura marginal, a diferença de comprimento reflete apenas a qualidade preditiva de $\hat\mu$: a floresta capta as interações não lineares entre hora, dia útil e clima, erra menos na calibração, gera um quantil $\hat r_\alpha$ menor e, portanto, intervalos mais informativos.
+:::
+
+# A cobertura varia de experimento para experimento
+
+O resultado da Seção 3 depende de **uma** divisão aleatória dos dados. Agora repetimos o experimento 50 vezes, sorteando novas divisões a cada vez (pode levar cerca de um minuto; na base 2, Bikeshare, que é a maior, alguns minutos).
+
+```{r}
+#| label: repeticoes
+B <- 50
+set.seed(2026)
+reps <- lapply(seq_len(B), function(b) experimento(dados, alpha) |> mutate(rep = b)) |>
+  bind_rows()
+
+resumo_rep <- reps |>
+  group_by(rep, metodo) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf), .groups = "drop")
+```
+
+```{r}
+#| label: boxplot-cobertura
+#| fig-height: 3.5
+ggplot(resumo_rep, aes(x = metodo, y = cobertura)) +
+  geom_boxplot(fill = "#0067B1", alpha = 0.3) +
+  geom_hline(yintercept = 1 - alpha, linetype = 2, color = "#B42828") +
+  labs(x = NULL, y = "Cobertura empírica no teste",
+       title = sprintf("%d repetições; linha tracejada = nível nominal", B)) +
+  theme_bw()
+
+resumo_rep |>
+  group_by(metodo) |>
+  summarise(cob_media = mean(cobertura), cob_min = min(cobertura),
+            cob_max = max(cobertura), comp_medio = mean(comprimento)) |>
+  knitr::kable(digits = 3, col.names = c("Método", "Cobertura média", "Mínima",
+                                         "Máxima", "Comprimento médio"))
+```
+
+::: {.callout-important}
+## Tarefa 3
+
+(a) Por que a cobertura empírica muda de uma repetição para outra, mesmo com o mesmo método e o mesmo $\alpha$?
+
+(b) A garantia vista em aula, $P(Y_{n+1} \in C(X_{n+1})) \geq 1-\alpha$, é sobre **uma** repetição ou sobre a **média** de muitas? A cobertura média dos métodos conformais está de acordo com ela?
+
+(c) O intervalo clássico ficou sistematicamente acima ou abaixo de 90%? Relacione com a sua resposta da Tarefa 2(b).
+:::
+
+::: {.resposta}
+**Resposta:**
+
+(a) A cada repetição sorteamos uma nova divisão em treino, calibração e teste. Assim, mudam o modelo ajustado, os escores da calibração (e, portanto, o quantil $\hat r_\alpha$) e as horas usadas no teste. A cobertura empírica é uma proporção calculada em uma amostra finita de teste, então é uma variável aleatória: nas 50 repetições ela variou entre ~88% e ~92% para os métodos conformais.
+
+(b) A garantia é uma probabilidade, ou seja, um valor esperado sobre a aleatoriedade da calibração **e** do novo ponto. Ela vale para a **média** de muitas repetições, e não assegura que cada divisão terá cobertura de pelo menos 90%. A cobertura média dos métodos conformais está de acordo com ela: 89,9% para Conformal (lm) e 90,3% para Conformal (floresta). Como a calibração tem $n = 2.593$ horas, a teoria diz que a cobertura esperada fica entre $1-\alpha = 90\%$ e $1-\alpha+1/(n+1) \approx 90{,}04\%$, ou seja, praticamente exatos 90%, que é o que observamos (a diferença de ±0,1 p.p. é ruído de 50 repetições). Algumas repetições abaixo de 90% são esperadas e não violam a garantia.
+
+(c) O intervalo clássico ficou sistematicamente um pouco abaixo de 90%: média de 89,1% e máxima de 90,4% em 50 repetições, ou seja, quase sempre abaixo do nível nominal. Isso é coerente com a Tarefa 2(b): o intervalo clássico supõe erros normais com variância constante, suposições violadas aqui (heteroscedasticidade, assimetria e uma resposta limitada em zero). Como a largura do intervalo clássico é praticamente constante, ele erra de forma parecida com o conformal (sobra nas horas calmas, falta nas de pico), mas sem um passo de calibração que corrija o nível global. O desvio aqui é pequeno, mas nada no método o limita: em dados com heteroscedasticidade ou caudas mais fortes, a subcobertura poderia ser bem maior, enquanto o conformal garante os 90% de qualquer forma.
+:::
+
+# Cobertura por subgrupo
+
+A garantia da predição conformal é **marginal**: vale na média sobre toda a população. Vamos verificar o que acontece dentro de cada subgrupo, usando todas as repetições para reduzir o ruído.
+
+```{r}
+#| label: cobertura-subgrupo
+reps <- reps |> mutate(subgrupo = subgrupo[id])
+
+cob_sub <- reps |>
+  group_by(metodo, subgrupo) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf), .groups = "drop")
+
+cob_sub |>
+  select(-comprimento) |>
+  pivot_wider(names_from = metodo, values_from = cobertura) |>
+  rename(!!cfg$nome_sub := subgrupo) |>
+  knitr::kable(digits = 3)
+```
+
+```{r}
+#| label: grafico-subgrupo
+#| fig-height: 3.5
+ggplot(cob_sub, aes(x = subgrupo, y = cobertura, fill = metodo)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_hline(yintercept = 1 - alpha, linetype = 2, color = "#B42828") +
+  coord_cartesian(ylim = c(0.5, 1)) +
+  scale_fill_manual(values = c("grey60", "#002F6C", "#0067B1")) +
+  labs(x = cfg$nome_sub, y = "Cobertura média", fill = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+::: {.callout-important}
+## Tarefa 4
+
+(a) Em quais subgrupos a cobertura dos métodos conformais fica abaixo de 90%? E acima?
+
+(b) Explique o padrão usando o que você observou na Tarefa 1(b). Dica: o intervalo conformal com resíduo absoluto tem o **mesmo comprimento** para todas as observações.
+
+(c) Isso contradiz a garantia da predição conformal? Justifique.
+
+(d) Dê um exemplo concreto, no contexto dos seus dados, de alguém que seria prejudicado por usar esses intervalos sem olhar a cobertura por subgrupo.
+:::
+
+::: {.resposta}
+**Resposta:**
+
+(a) Os métodos conformais ficam abaixo de 90% no "dia (6-15h)" (85% a 87%) e, sobretudo, no "pico (16-19h)" (~77%). Ficam acima na "madrugada (0-5h)" (~100%) e na "noite (20-23h)" (97% a 100%). Em resumo, a cobertura global de 90% é uma média de faixas com cobertura muito alta e de faixas com cobertura bem abaixo do nominal.
+
+(b) O intervalo conformal com resíduo absoluto tem o mesmo comprimento, $2\hat r_\alpha$, em todas as horas (cerca de 180 bicicletas na floresta), mas a Tarefa 1(b) mostrou que a variabilidade da demanda é muito diferente entre as faixas. Na madrugada (DP ≈ 24) esse intervalo é largo demais e quase sempre cobre o valor observado. No pico (DP ≈ 150), os erros de predição são bem maiores e o mesmo intervalo é estreito demais, então muitas horas ficam de fora. O quantil $\hat r_\alpha$ fica "no meio" e equilibra as faixas só na média.
+
+(c) Não contradiz. A garantia vista em aula é **marginal**: $P(Y_{n+1} \in C(X_{n+1})) \geq 1-\alpha$ vale na média sobre toda a população de horas, e de fato a cobertura global ficou em ~90%. Ela não promete cobertura condicional, $P(Y_{n+1} \in C(X_{n+1}) \mid X_{n+1} = x) \geq 1-\alpha$, nem cobertura dentro de cada subgrupo. Esse é exatamente o exemplo das regiões A/B dos slides: 99% em um grupo e 81% no outro resultam em 90% na média.
+
+(d) Considere o responsável pela redistribuição de bicicletas entre as estações em Washington, que usa o limite superior do intervalo de 90% para decidir quantas bicicletas deixar disponíveis. No horário de pico da tarde (16-19h), quando mais gente volta do trabalho, a demanda real fica fora do intervalo em cerca de 1 a cada 4 horas, e não em 1 a cada 10. Quase todos esses erros são para cima: em ~20% das horas de pico a demanda **supera** o limite superior (contra ~3% abaixo do limite inferior; ver Seção 8). O resultado seriam estações vazias e usuários sem bicicleta justamente no momento mais crítico, enquanto na madrugada a empresa deixaria bicicletas paradas sem necessidade.
+:::
+
+# Conclusão
+
+::: {.callout-important}
+## Tarefa 5
+
+Em um parágrafo, escreva uma recomendação para alguém que precisa produzir intervalos de predição para a resposta da sua base: qual método usar, o que a garantia assegura e qual limitação deve ser comunicada a quem for usar os intervalos.
+:::
+
+::: {.resposta}
+**Resposta:** Para prever o número de bicicletas alugadas por hora, recomendamos a predição conformal *split* com uma floresta aleatória como $\hat\mu$, e não o intervalo clássico da regressão linear. Os dados violam as suposições do intervalo clássico (heteroscedasticidade forte, assimetria, contagens limitadas em zero e limites inferiores negativos). Já o conformal só exige que as horas sejam permutáveis e, com a floresta, gera intervalos cerca de 30% mais curtos que o conformal com regressão linear. A garantia assegura que, **em média sobre todas as horas**, cerca de 90% dos valores observados caem dentro do intervalo, em amostra finita e sem supor nenhuma distribuição para os erros. A limitação a comunicar é que essa cobertura é marginal: com resíduo absoluto o intervalo tem largura fixa, então cobre quase 100% das horas da madrugada e só ~77% das horas de pico (16-19h), justamente as mais importantes para a operação. Se a decisão depende do desempenho em faixas específicas, a recomendação é calibrar separadamente por faixa horária (Mondrian CP): na Seção 8 isso levou a cobertura a ~90% em todas as faixas, com intervalos até mais curtos em média. Também vale lembrar que a permutabilidade pode falhar se o intervalo for usado em um período futuro com padrão diferente (por exemplo, outro ano ou mudanças no sistema).
+:::
+
+# Extensão (opcional): escore normalizado
+
+Implemente o escore localmente ponderado visto em aula,
+$$
+R_i = \frac{|Y_i - \hat\mu(X_i)|}{\hat\sigma(X_i)}, \qquad
+C(x) = \bigl[\hat\mu(x) - \hat r_\alpha\, \hat\sigma(x),\; \hat\mu(x) + \hat r_\alpha\, \hat\sigma(x)\bigr],
+$$
+com $\hat\mu$ e $\hat\sigma$ florestas aleatórias. **Atenção:** $\hat\sigma$ não pode ser ajustado na amostra de calibração. Uma opção é ajustá-lo no treino, usando os resíduos *out-of-bag* da floresta (`rf$predictions` no `ranger`), que não usam a própria observação na predição.
+
+Depois, troque `eval: false` por `eval: true` e refaça a análise de cobertura por subgrupo (Seção 6) incluindo este método.
+
+```{r}
+#| label: extensao
+#| code-fold: show
+#| eval: true
+#| fig-height: 4
+set.seed(123)
+sp <- dividir_dados(nrow(dados))
+tr <- dados[sp$treino, ]; ca <- dados[sp$calib, ]; te <- dados[sp$teste, ]
+
+rf <- ranger(y ~ ., data = tr, num.trees = 200)
+
+# Resíduos absolutos out-of-bag no treino
+tr_sigma <- tr |> mutate(delta = abs(y - rf$predictions)) |> select(-y)
+rf_sigma <- ranger(delta ~ ., data = tr_sigma, num.trees = 200)
+
+# sigma na calibração e no teste (pmax evita divisão por zero)
+sigma_ca <- pmax(predict(rf_sigma, data = ca)$predictions, 1e-6)
+sigma_te <- pmax(predict(rf_sigma, data = te)$predictions, 1e-6)
+
+# escores normalizados na calibração e quantil conformal
+mu_ca  <- predict(rf, data = ca)$predictions
+r_norm <- quantil_conformal(abs(ca$y - mu_ca) / sigma_ca, alpha)
+
+# intervalos no teste: comprimento 2 * r_norm * sigma(x), variando com x
+mu_te    <- predict(rf, data = te)$predictions
+inf_norm <- mu_te - r_norm * sigma_te
+sup_norm <- mu_te + r_norm * sigma_te
+
+avaliar(te$y, inf_norm, sup_norm)
+grafico_intervalos(te$y, mu_te, inf_norm, sup_norm,
+                   titulo = "Conformal normalizado (floresta + sigma)")
+```
+
+Uma única divisão é ruidosa, então, como na Seção 6, repetimos o procedimento 50 vezes. Em cada repetição os quatro métodos usam **a mesma** divisão treino/calibração/teste, o que torna a comparação justa. Em seguida recalculamos a cobertura e o comprimento médio por subgrupo.
+
+```{r}
+#| label: extensao-repeticoes
+#| code-fold: show
+# Mesmo experimento da Seção 3, acrescido do conformal normalizado
+experimento_norm <- function(dados, alpha) {
+  sp <- dividir_dados(nrow(dados))
+  tr <- dados[sp$treino, ]; ca <- dados[sp$calib, ]; te <- dados[sp$teste, ]
+
+  lin <- lm(y ~ ., data = tr)
+  rf  <- ranger(y ~ ., data = tr, num.trees = 200)
+  rf_sigma <- ranger(delta ~ .,
+                     data = tr |> mutate(delta = abs(y - rf$predictions)) |> select(-y),
+                     num.trees = 200)
+
+  cl <- predict(lin, newdata = te, interval = "prediction", level = 1 - alpha)
+
+  r_lin  <- quantil_conformal(abs(ca$y - predict(lin, newdata = ca)), alpha)
+  yh_lin <- predict(lin, newdata = te)
+
+  mu_ca <- predict(rf, data = ca)$predictions
+  mu_te <- predict(rf, data = te)$predictions
+  r_rf  <- quantil_conformal(abs(ca$y - mu_ca), alpha)
+
+  s_ca   <- pmax(predict(rf_sigma, data = ca)$predictions, 1e-6)
+  s_te   <- pmax(predict(rf_sigma, data = te)$predictions, 1e-6)
+  r_norm <- quantil_conformal(abs(ca$y - mu_ca) / s_ca, alpha)
+
+  bind_rows(
+    tibble(id = sp$teste, y = te$y, metodo = "Clássico (lm)",
+           inf = cl[, "lwr"], sup = cl[, "upr"]),
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal (lm)",
+           inf = yh_lin - r_lin, sup = yh_lin + r_lin),
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal (floresta)",
+           inf = mu_te - r_rf, sup = mu_te + r_rf),
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal normalizado",
+           inf = mu_te - r_norm * s_te, sup = mu_te + r_norm * s_te)
+  )
+}
+
+set.seed(2026)
+reps_norm <- lapply(seq_len(B), function(b) experimento_norm(dados, alpha) |> mutate(rep = b)) |>
+  bind_rows() |>
+  mutate(subgrupo = subgrupo[id],
+         metodo = factor(metodo, levels = c("Clássico (lm)", "Conformal (lm)",
+                                            "Conformal (floresta)", "Conformal normalizado")))
+
+# Cobertura e comprimento médios globais (50 repetições)
+reps_norm |>
+  group_by(metodo, rep) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf), .groups = "drop") |>
+  group_by(metodo) |>
+  summarise(cob_media = mean(cobertura), cob_min = min(cobertura),
+            cob_max = max(cobertura), comp_medio = mean(comprimento)) |>
+  knitr::kable(digits = 3, col.names = c("Método", "Cobertura média", "Mínima",
+                                         "Máxima", "Comprimento médio"))
+
+cob_sub_norm <- reps_norm |>
+  group_by(metodo, subgrupo) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf), .groups = "drop")
+
+# Cobertura por subgrupo
+cob_sub_norm |>
+  select(-comprimento) |>
+  pivot_wider(names_from = metodo, values_from = cobertura) |>
+  rename(!!cfg$nome_sub := subgrupo) |>
+  knitr::kable(digits = 3)
+
+# Comprimento médio por subgrupo
+cob_sub_norm |>
+  select(-cobertura) |>
+  pivot_wider(names_from = metodo, values_from = comprimento) |>
+  rename(!!cfg$nome_sub := subgrupo) |>
+  knitr::kable(digits = 1)
+```
+
+```{r}
+#| label: extensao-grafico-subgrupo
+#| fig-height: 3.5
+ggplot(cob_sub_norm, aes(x = subgrupo, y = cobertura, fill = metodo)) +
+  geom_col(position = position_dodge(width = 0.85), width = 0.8) +
+  geom_hline(yintercept = 1 - alpha, linetype = 2, color = "#B42828") +
+  coord_cartesian(ylim = c(0.5, 1)) +
+  scale_fill_manual(values = c("grey60", "#002F6C", "#0067B1", "#E69F00")) +
+  labs(x = cfg$nome_sub, y = "Cobertura média", fill = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggplot(cob_sub_norm, aes(x = subgrupo, y = comprimento, fill = metodo)) +
+  geom_col(position = position_dodge(width = 0.85), width = 0.8) +
+  scale_fill_manual(values = c("grey60", "#002F6C", "#0067B1", "#E69F00")) +
+  labs(x = cfg$nome_sub, y = "Comprimento médio do intervalo", fill = NULL) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+::: {.resposta}
+**Resposta:** *(a normalização melhorou a cobertura nos subgrupos? E o comprimento médio?)*
+
+Sim, nos dois sentidos. A cobertura global continua em ~90% (a garantia marginal se mantém, pois $\hat\sigma$ foi ajustado só no treino), mas agora fica mais equilibrada entre as faixas horárias. No pico (16-19h), a cobertura subiu de ~76% para ~82%, e no dia (6-15h) de ~87% para ~89%. Na madrugada e à noite, que antes tinham cobertura excessiva (~97%-100%), ela caiu para ~95% e ~94%, mais perto dos 90%.
+
+O ganho no comprimento é ainda maior. O comprimento médio caiu de ~181 (Conformal (floresta)) para ~138 bicicletas, cerca de 24% menor, porque o intervalo agora se adapta à variabilidade local: ~51 bicicletas na madrugada, onde a demanda é previsível, e ~199 no pico. Com isso, a "folga" que antes era desperdiçada na madrugada vai para as horas de pico.
+
+A melhora, porém, não é completa: o pico ainda fica abaixo de 90%. O escore normalizado continua tendo apenas garantia marginal, e $\hat\sigma(x)$ é uma estimativa imperfeita da dispersão local, que parece subestimar a variabilidade justamente nas horas mais voláteis. Para garantir 90% em cada faixa horária, o passo seguinte é a calibração por subgrupo (Mondrian CP), que implementamos na Seção 8.
+:::
+
+# Extensão do grupo: Mondrian CP (calibração por faixa horária)
+
+::: {.callout-tip}
+## Por que esta seção
+Esta seção não foi pedida. A incluímos porque ela responde diretamente à limitação discutida nas Tarefas 4 e 5 e na Seção 7: com calibração única, nenhum escore garante 90% **dentro** de cada faixa horária.
+:::
+
+Os slides citam o *Mondrian CP* (calibração por subgrupo) como um dos caminhos para a cobertura por subgrupo. A ideia é simples: em vez de um único quantil $\hat r_\alpha$, calculamos um quantil **para cada faixa horária** $g$, usando só os escores de calibração daquela faixa:
+$$
+\hat r_\alpha^{(g)} = R^{(g)}_{(\lceil (1-\alpha)(n_g+1) \rceil)}, \qquad
+C(x) = \bigl[\hat\mu(x) - \hat r_\alpha^{(g(x))},\; \hat\mu(x) + \hat r_\alpha^{(g(x))}\bigr].
+$$
+Dentro de uma mesma faixa, os pontos de calibração e de teste continuam permutáveis, então o mesmo argumento visto em aula vale **condicionalmente à faixa**: $P\big(Y_{n+1} \in C(X_{n+1}) \mid G_{n+1} = g\big) \geq 1-\alpha$ para cada $g$. Isso só é possível porque a faixa horária é conhecida no momento da predição (é função da covariável `hr`). Usamos o mesmo $\hat\mu$ (floresta) e o mesmo escore de resíduo absoluto do Conformal (floresta); a única diferença é a calibração.
+
+```{r}
+#| label: mondrian
+#| code-fold: show
+# Conformal (floresta) com calibração global vs. calibração por faixa horária
+experimento_mondrian <- function(dados, alpha, grupo) {
+  sp <- dividir_dados(nrow(dados))
+  tr <- dados[sp$treino, ]; ca <- dados[sp$calib, ]; te <- dados[sp$teste, ]
+
+  rf    <- ranger(y ~ ., data = tr, num.trees = 200)
+  mu_ca <- predict(rf, data = ca)$predictions
+  mu_te <- predict(rf, data = te)$predictions
+  r_ca  <- abs(ca$y - mu_ca)
+
+  # um quantil global e um quantil por faixa horária
+  r_global <- quantil_conformal(r_ca, alpha)
+  r_faixa  <- tapply(r_ca, grupo[sp$calib], quantil_conformal, alpha = alpha)
+  r_te     <- r_faixa[as.character(grupo[sp$teste])]
+
+  bind_rows(
+    tibble(id = sp$teste, y = te$y, metodo = "Conformal (floresta)",
+           inf = mu_te - r_global, sup = mu_te + r_global),
+    tibble(id = sp$teste, y = te$y, metodo = "Mondrian (floresta)",
+           inf = mu_te - r_te, sup = mu_te + r_te)
+  )
+}
+
+set.seed(2026)
+reps_mond <- lapply(seq_len(B), function(b)
+  experimento_mondrian(dados, alpha, subgrupo) |> mutate(rep = b)) |>
+  bind_rows() |>
+  mutate(subgrupo = subgrupo[id])
+
+reps_mond |>
+  group_by(metodo, rep) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            comprimento = mean(sup - inf), .groups = "drop") |>
+  group_by(metodo) |>
+  summarise(cob_media = mean(cobertura), cob_min = min(cobertura),
+            cob_max = max(cobertura), comp_medio = mean(comprimento)) |>
+  knitr::kable(digits = 3, col.names = c("Método", "Cobertura média", "Mínima",
+                                         "Máxima", "Comprimento médio"))
+
+cob_mond <- reps_mond |>
+  group_by(metodo, subgrupo) |>
+  summarise(cobertura = mean(y >= inf & y <= sup),
+            acima = mean(y > sup), abaixo = mean(y < inf),
+            comprimento = mean(sup - inf), .groups = "drop")
+
+cob_mond |>
+  arrange(subgrupo, metodo) |>
+  knitr::kable(digits = 3,
+               col.names = c("Método", cfg$nome_sub, "Cobertura",
+                             "Acima do limite superior", "Abaixo do limite inferior",
+                             "Comprimento médio"))
+```
+
+```{r}
+#| label: mondrian-grafico
+#| fig-height: 3.5
+ggplot(cob_mond, aes(x = subgrupo, y = cobertura, fill = metodo)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_hline(yintercept = 1 - alpha, linetype = 2, color = "#B42828") +
+  geom_text(aes(label = sprintf("%.0f", comprimento), y = 0.52),
+            position = position_dodge(width = 0.8), size = 3, color = "white") +
+  coord_cartesian(ylim = c(0.5, 1)) +
+  scale_fill_manual(values = c("#0067B1", "#E69F00")) +
+  labs(x = cfg$nome_sub, y = "Cobertura média", fill = NULL,
+       caption = "Números na base das barras: comprimento médio do intervalo (bicicletas).") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+::: {.resposta}
+**Resultado:** com a mesma floresta e o mesmo escore, calibrar por faixa horária leva a cobertura a ~90% em **todas** as faixas (madrugada, dia, pico e noite), contra 77% a 100% na calibração global, e a cobertura global continua em ~90%. Em vez de um comprimento único de ~182 bicicletas, cada faixa recebe a largura de que precisa: ~49 na madrugada e ~286 no pico. Como resultado, o comprimento médio **cai** para ~168: o que se economiza nas horas previsíveis compensa o alargamento no pico.
+
+Na comparação com o escore normalizado (Seção 7), o Mondrian corrige a cobertura por faixa com garantia teórica, mas não se adapta **dentro** da faixa (todas as horas de pico recebem a mesma largura). O normalizado se adapta a cada $x$, mas só tem garantia marginal. O custo do Mondrian é usar menos pontos de calibração por quantil (~440 no pico, em vez de ~2.600), o que deixa $\hat r^{(g)}_\alpha$ mais variável; aqui isso não é problema, mas com subgrupos pequenos seria. Além disso, os subgrupos precisam ser definidos **antes** de olhar os resultados do teste. As duas ideias também podem ser combinadas (escore normalizado calibrado por faixa).
+:::
+
+# Reprodutibilidade {.unnumbered}
+
+Todo o material desta atividade (este `.qmd`, o `.html` gerado e os slides de referência) está versionado no repositório do grupo: <https://github.com/ArthurGoon/lea-ufscar>, na pasta `atividade-conformal/`. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (`set.seed`), então os resultados são idênticos aos apresentados aqui.
+
+```{r}
+#| label: sessao
+#| code-fold: true
+sessionInfo()
+```
