@@ -2,8 +2,8 @@
 title: "Atividade em grupo — Predição conformal"
 subtitle: "Laboratório de Estatística Aplicada — DEs/UFSCar"
 author:
-  - "Arthur Gon (RA 811464)"
-  - "Isabela Viana (RA 811753)"
+  - "Arthur Pereira Gon (RA 811464)"
+  - "Isabella Viana Bambirra (RA 811753)"
 date: today
 date-format: "DD/MM/YYYY"
 lang: pt
@@ -113,7 +113,7 @@ Altere **apenas** a linha `RAs <- ...` abaixo, com os RAs de **todos** os integr
 ```{r}
 #| label: grupo
 #| code-fold: show
-RAs <- c(811464, 811753)   # Arthur Gon, Isabela Viana
+RAs <- c(811464, 811753)   # Arthur Pereira Gon, Isabella Viana Bambirra
 
 if (anyNA(RAs)) stop("Preencha os RAs dos integrantes no chunk 'grupo'.")
 GRUPO <- sum(as.numeric(RAs)) %% 4 + 1
@@ -765,7 +765,7 @@ Na comparação com o escore normalizado (Seção 7), o Mondrian corrige a cober
 
 # Reprodutibilidade {.unnumbered}
 
-Todo o material desta atividade (este `.qmd`, o `.html` gerado e os slides de referência) está versionado no repositório do grupo: <https://github.com/ArthurGoon/lea-ufscar>, na pasta `atividade-conformal/`. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (`set.seed`), então os resultados são idênticos aos apresentados aqui.
+O `.qmd` e o `.html` desta atividade estão versionados no repositório <https://github.com/ArthurGoon/lea-predicao-conformal>. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (`set.seed`), então os resultados são idênticos aos apresentados aqui.
 
 ```{r}
 #| label: sessao

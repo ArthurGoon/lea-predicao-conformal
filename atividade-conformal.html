@@ -6,8 +6,8 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="Arthur Gon (RA 811464)">
-<meta name="author" content="Isabela Viana (RA 811753)">
+<meta name="author" content="Arthur Pereira Gon (RA 811464)">
+<meta name="author" content="Isabella Viana Bambirra (RA 811753)">
 <meta name="dcterms.date" content="2026-11-10">
 
 <title>Atividade em grupo — Predição conformal</title>
@@ -2417,8 +2417,8 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Autores</div>
     <div class="quarto-title-meta-contents">
-             <p>Arthur Gon (RA 811464) </p>
-             <p>Isabela Viana (RA 811753) </p>
+             <p>Arthur Pereira Gon (RA 811464) </p>
+             <p>Isabella Viana Bambirra (RA 811753) </p>
           </div>
   </div>
     
@@ -2531,7 +2531,7 @@ window.Quarto = {
 <div class="cell">
 <details open class="code-fold">
 <summary>Código</summary>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>RAs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">811464</span>, <span class="dv">811753</span>)   <span class="co"># Arthur Gon, Isabela Viana</span></span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>RAs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">811464</span>, <span class="dv">811753</span>)   <span class="co"># Arthur Pereira Gon, Isabella Viana Bambirra</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">anyNA</span>(RAs)) <span class="fu">stop</span>(<span class="st">&quot;Preencha os RAs dos integrantes no chunk &#39;grupo&#39;.&quot;</span>)</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>GRUPO <span class="ot">&lt;-</span> <span class="fu">sum</span>(<span class="fu">as.numeric</span>(RAs)) <span class="sc">%%</span> <span class="dv">4</span> <span class="sc">+</span> <span class="dv">1</span></span></code></pre></div><button title="Copiar para a área de transferência" class="code-copy-button"><i class="bi"></i></button></div>
@@ -3730,7 +3730,7 @@ C(x) = \bigl[\hat\mu(x) - \hat r_\alpha^{(g(x))},\; \hat\mu(x) + \hat r_\alpha^{
 </section>
 <section id="reprodutibilidade" class="level1 unnumbered">
 <h1 class="unnumbered">Reprodutibilidade</h1>
-<p>Todo o material desta atividade (este <code>.qmd</code>, o <code>.html</code> gerado e os slides de referência) está versionado no repositório do grupo: <a href="https://github.com/ArthurGoon/lea-ufscar" class="uri">https://github.com/ArthurGoon/lea-ufscar</a>, na pasta <code>atividade-conformal/</code>. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (<code>set.seed</code>), então os resultados são idênticos aos apresentados aqui.</p>
+<p>O <code>.qmd</code> e o <code>.html</code> desta atividade estão versionados no repositório <a href="https://github.com/ArthurGoon/lea-predicao-conformal" class="uri">https://github.com/ArthurGoon/lea-predicao-conformal</a>. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (<code>set.seed</code>), então os resultados são idênticos aos apresentados aqui.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Código</summary>
@@ -4231,8 +4231,8 @@ loaded via a namespace (and not attached):
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="an">title:</span><span class="co"> &quot;Atividade em grupo — Predição conformal&quot;</span></span>
 <span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="an">subtitle:</span><span class="co"> &quot;Laboratório de Estatística Aplicada — DEs/UFSCar&quot;</span></span>
 <span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="an">author:</span></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="co">  - &quot;Arthur Gon (RA 811464)&quot;</span></span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a><span class="co">  - &quot;Isabela Viana (RA 811753)&quot;</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="co">  - &quot;Arthur Pereira Gon (RA 811464)&quot;</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a><span class="co">  - &quot;Isabella Viana Bambirra (RA 811753)&quot;</span></span>
 <span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a><span class="an">date:</span><span class="co"> today</span></span>
 <span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a><span class="an">date-format:</span><span class="co"> &quot;DD/MM/YYYY&quot;</span></span>
 <span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a><span class="an">lang:</span><span class="co"> pt</span></span>
@@ -4342,7 +4342,7 @@ loaded via a namespace (and not attached):
 <span id="cb29-117"><a href="#cb29-117" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
 <span id="cb29-118"><a href="#cb29-118" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: grupo</span></span>
 <span id="cb29-119"><a href="#cb29-119" aria-hidden="true" tabindex="-1"></a><span class="co">#| code-fold: show</span></span>
-<span id="cb29-120"><a href="#cb29-120" aria-hidden="true" tabindex="-1"></a>RAs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">811464</span>, <span class="dv">811753</span>)   <span class="co"># Arthur Gon, Isabela Viana</span></span>
+<span id="cb29-120"><a href="#cb29-120" aria-hidden="true" tabindex="-1"></a>RAs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">811464</span>, <span class="dv">811753</span>)   <span class="co"># Arthur Pereira Gon, Isabella Viana Bambirra</span></span>
 <span id="cb29-121"><a href="#cb29-121" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb29-122"><a href="#cb29-122" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">anyNA</span>(RAs)) <span class="fu">stop</span>(<span class="st">&quot;Preencha os RAs dos integrantes no chunk &#39;grupo&#39;.&quot;</span>)</span>
 <span id="cb29-123"><a href="#cb29-123" aria-hidden="true" tabindex="-1"></a>GRUPO <span class="ot">&lt;-</span> <span class="fu">sum</span>(<span class="fu">as.numeric</span>(RAs)) <span class="sc">%%</span> <span class="dv">4</span> <span class="sc">+</span> <span class="dv">1</span></span>
@@ -4994,7 +4994,7 @@ loaded via a namespace (and not attached):
 <span id="cb29-799"><a href="#cb29-799" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb29-800"><a href="#cb29-800" aria-hidden="true" tabindex="-1"></a><span class="fu"># Reprodutibilidade {.unnumbered}</span></span>
 <span id="cb29-801"><a href="#cb29-801" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-802"><a href="#cb29-802" aria-hidden="true" tabindex="-1"></a>Todo o material desta atividade (este <span class="in">`.qmd`</span>, o <span class="in">`.html`</span> gerado e os slides de referência) está versionado no repositório do grupo: <span class="ot">&lt;https://github.com/ArthurGoon/lea-ufscar&gt;</span>, na pasta <span class="in">`atividade-conformal/`</span>. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (<span class="in">`set.seed`</span>), então os resultados são idênticos aos apresentados aqui.</span>
+<span id="cb29-802"><a href="#cb29-802" aria-hidden="true" tabindex="-1"></a>O <span class="in">`.qmd`</span> e o <span class="in">`.html`</span> desta atividade estão versionados no repositório <span class="ot">&lt;https://github.com/ArthurGoon/lea-predicao-conformal&gt;</span>. Para reproduzir, basta instalar os pacotes listados nas instruções e renderizar o arquivo; todas as etapas aleatórias usam sementes fixas (<span class="in">`set.seed`</span>), então os resultados são idênticos aos apresentados aqui.</span>
 <span id="cb29-803"><a href="#cb29-803" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb29-806"><a href="#cb29-806" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
 <span id="cb29-807"><a href="#cb29-807" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: sessao</span></span>
